@@ -827,6 +827,22 @@ export interface Config {
 
 来源：[`packages/experimental/ptc-runtime-python/src/index.ts:42`](../packages/experimental/ptc-runtime-python/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-side-sessions"></a>
+
+## `@deepseek-ai/dsh-experimental-side-sessions`
+
+Requires: `agents` · `commands` · `sessions`
+
+```ts config-catalog
+/** Deployment-owned limits for the `/side` command. */
+export interface Config {
+  /** Byte cap for the note merged back into the parent session. */
+  mergeMaxBytes: number
+}
+```
+
+Source: [`packages/experimental/side-sessions/src/index.ts:29`](../packages/experimental/side-sessions/src/index.ts)
+
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
@@ -844,6 +860,26 @@ export interface Config {
 ```
 
 来源：[`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
+
+<a id="deepseek-aidsh-experimental-tool-history-read"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-history-read`
+
+Requires: `tools` · `sessionQuery`
+
+```ts config-catalog
+/** Deployment-owned bounds for one `history_read` transcript. */
+export interface Config {
+  /** Inclusive byte budget for a rendered transcript. */
+  maxBytes: number
+  /** Maximum events rendered in one span read. */
+  maxEvents: number
+  /** Maximum characters rendered from one event or one checkpoint summary. */
+  maxEventChars: number
+}
+```
+
+Source: [`packages/experimental/tool-history-read/src/index.ts:23`](../packages/experimental/tool-history-read/src/index.ts)
 
 <a id="deepseek-aidsh-file-reference-local"></a>
 
@@ -3836,7 +3872,9 @@ export interface Config {
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions`（[`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-auto-review` — 需要 `llm` · `permissionPresets` · `sessions` · `tools`（[`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team`（[`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts)）
+- `@deepseek-ai/dsh-experimental-client-ui-task-surface`（[`packages/experimental/client-ui-task-surface/src/index.ts`](../packages/experimental/client-ui-task-surface/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` — requires `computerUse` · `tools` · `systemPrompt` ([`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts))
+- `@deepseek-ai/dsh-experimental-tool-task-surface` — 需要 `tools`（[`packages/experimental/tool-task-surface/src/index.ts`](../packages/experimental/tool-task-surface/src/index.ts)）
 - `@deepseek-ai/dsh-fs-observation-policy`（[`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts)）
 - `@deepseek-ai/dsh-fs-ssh` — 需要 `ssh` · `sandboxPolicy`（[`packages/ssh/fs-ssh/src/index.ts`](../packages/ssh/fs-ssh/src/index.ts)）
 - `@deepseek-ai/dsh-goal-round-driver` — 需要 `agents` · `goals` · `sessions`（[`packages/goal/goal-round-driver/src/index.ts`](../packages/goal/goal-round-driver/src/index.ts)）
