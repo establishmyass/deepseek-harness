@@ -41,6 +41,7 @@ The experimental group contains prototype capabilities whose contracts can chang
 | [`webworker-packer`](webworker-packer/README.md) | Builds the gzip-compressed VFS image consumed by the browser worker preview | library and CLI — no ctx key |
 | [`webworker-runtime`](webworker-runtime/README.md) | Runs the harness plugin tree inside a dedicated browser worker | library and worker entry — no ctx key |
 | [`side-sessions`](side-sessions/README.md) | Interactive side sessions: fork a session into an advisor and merge its answer back | command plane — no ctx key |
+| [`tool-history-read`](tool-history-read/README.md) | Model-facing `history_read` tool that recalls spans removed by context compaction | registers a tool on `ctx.tools` |
 
 -----
 

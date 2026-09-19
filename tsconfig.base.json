@@ -274,6 +274,7 @@
       "@deepseek-ai/dsh-experimental-agent-team-profile": ["./packages/experimental/agent-team-profile/src"],
       "@deepseek-ai/dsh-experimental-agent-team-web-profile": ["./packages/experimental/agent-team-web-profile/src"],
       "@deepseek-ai/dsh-experimental-side-sessions": ["./packages/experimental/side-sessions/src"],
+      "@deepseek-ai/dsh-experimental-tool-history-read": ["./packages/experimental/tool-history-read/src"],
       "@deepseek-ai/dsh-experimental-tool-agent-team": ["./packages/experimental/tool-agent-team/src"],
       "@deepseek-ai/dsh-experimental-webworker-runtime": ["./packages/experimental/webworker-runtime/src"],
       "@deepseek-ai/dsh-experimental-webworker-packer": ["./packages/experimental/webworker-packer/src"],

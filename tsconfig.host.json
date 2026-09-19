@@ -371,6 +371,7 @@
     { "path": "./packages/experimental/tool-agent-team" },
     { "path": "./packages/experimental/agent-team-web-profile" },
     { "path": "./packages/experimental/side-sessions" },
+    { "path": "./packages/experimental/tool-history-read" },
     { "path": "./packages/workflow/workflow" },
     { "path": "./packages/workflow/workflow-ptc" },
     { "path": "./packages/workflow/tool-workflow" },

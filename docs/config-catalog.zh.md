@@ -861,6 +861,26 @@ export interface Config {
 
 来源：[`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-tool-history-read"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-history-read`
+
+Requires: `tools` · `sessionQuery`
+
+```ts config-catalog
+/** Deployment-owned bounds for one `history_read` transcript. */
+export interface Config {
+  /** Inclusive byte budget for a rendered transcript. */
+  maxBytes: number
+  /** Maximum events rendered in one span read. */
+  maxEvents: number
+  /** Maximum characters rendered from one event or one checkpoint summary. */
+  maxEventChars: number
+}
+```
+
+Source: [`packages/experimental/tool-history-read/src/index.ts:23`](../packages/experimental/tool-history-read/src/index.ts)
+
 <a id="deepseek-aidsh-file-reference-local"></a>
 
 ## `@deepseek-ai/dsh-file-reference-local`
