@@ -42,6 +42,8 @@ The experimental group contains prototype capabilities whose contracts can chang
 | [`webworker-runtime`](webworker-runtime/README.md) | Runs the harness plugin tree inside a dedicated browser worker | library and worker entry — no ctx key |
 | [`side-sessions`](side-sessions/README.md) | Interactive side sessions: fork a session into an advisor and merge its answer back | command plane — no ctx key |
 | [`tool-history-read`](tool-history-read/README.md) | Model-facing `history_read` tool that recalls spans removed by context compaction | registers a tool on `ctx.tools` |
+| [`tool-task-surface`](tool-task-surface/README.md) | Model-facing `show_task_surface` tool that presents one structured panel and ends the turn | registers a tool on `ctx.tools` |
+| [`client-ui-task-surface`](client-ui-task-surface/README.md) | Web panel that renders one `show_task_surface` call as a fillable form and submits it as one user message | a keyed `tool.call.toolview` entry |
 
 -----
 

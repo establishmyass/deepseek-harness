@@ -42,6 +42,8 @@ kind: "package-group"
 | [`webworker-runtime`](webworker-runtime/README.zh.md) | 在专用浏览器 worker 中运行 harness 插件树 | 库与 worker 入口，不使用 ctx key |
 | [`side-sessions`](side-sessions/README.zh.md) | 交互式侧会话：把会话分叉为顾问并合回其结论 | 命令平面，不使用 ctx key |
 | [`tool-history-read`](tool-history-read/README.zh.md) | 面向模型的 `history_read` 工具：取回被上下文压缩移除的区段 | 在 `ctx.tools` 上注册工具 |
+| [`tool-task-surface`](tool-task-surface/README.zh.md) | 面向模型的 `show_task_surface` 工具：下发一块结构化面板并结束本轮 | 在 `ctx.tools` 上注册工具 |
+| [`client-ui-task-surface`](client-ui-task-surface/README.zh.md) | Web 面板：把一次 `show_task_surface` 调用渲染成可填写表单，并作为一条用户消息提交 | 一个键控 `tool.call.toolview` 条目 |
 
 -----
 

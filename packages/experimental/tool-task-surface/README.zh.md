@@ -1,0 +1,140 @@
+---
+description: "实验性的 show_task_surface 工具：下发一个结构化的 Task Surface 面板，并结束本轮对话等待用户作答。"
+kind: "package-reference"
+---
+
+# @deepseek-ai/dsh-experimental-tool-task-surface
+
+[English](README.md) | 中文
+
+## Summary
+
+`dsh-experimental-tool-task-surface` 给模型一个稳定工具 `show_task_surface`，用于那些用一块结构化面板表达比来回散文更清楚的交互：一张对比表、一组选项，或一小组相关字段。调用会发布 `TaskSurfaceModelV1`，由客户端渲染；调用成功后本轮对话结束，agent 停在用户这个人类检查点上。用户的提交会作为其下一条普通消息到达。当持久的成果是用户的结论（而不是面板本身）时，选它。
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+把本插件挂在工具注册表旁；除了 `ctx.tools`，该工具不依赖任何服务。Web 面板是另一个按需启用的包 [client-ui-task-surface](../client-ui-task-surface/README.zh.md)，因此即使宿主没装它，工具依然会 advertise —— 此时结果文本会告知模型：用户在对话里直接作答。
+
+### Declared model
+
+| Part | Supported values |
+|---|---|
+| `sections[]` | `id`、可选 `title`、可选 `layout`（`stack`，或 2–3 列的 `grid`）、`blocks[]` |
+| blocks | `markdown`（图片只渲染 alt 文本）、`metrics`、`table`（行以列 id 为键）、`notice`（`neutral`/`info`/`warning`） |
+| `fields[]` | `text`（单行或多行 `multiline`，可选 `required` 与 `initial`）、`choice`、`multi-choice`、`toggle` |
+| `submit` | `{ label }` |
+
+声明式 schema 之外的参数会在执行前被拒绝，因此不支持的字段类型会直接让调用失败，而不是渲染出一块残缺面板。
+
+### Limits
+
+| Bound | Value |
+|---|---|
+| Whole model | 64 KiB |
+| Sections | 12 |
+| Blocks per section | 8 |
+| Fields | 24 |
+| Table rows | 200 |
+
+超限即 `INVALID_ARGS` 失败，模型可在同一轮内重试。
+
+### Compose it
+
+```yaml
+- insert:
+    - id: tool-task-surface
+      name: '@deepseek-ai/dsh-experimental-tool-task-surface'
+```
+
+在仓库检出目录中，用 `dsh web --patch <file>` 应用这样一份 overlay。
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Implementation internals — click to expand</summary>
+
+本节说明该包如何实现上面的行为；可观测的契约见 [Use this package](#use-this-package)。
+
+### Design concept
+
+这个工具只负责三件事，其余全部委派出去。一份 `defineTool` 声明就是全部契约：schema 负责校验并窄化模型数据，函数体不再重新解析。随后函数体只做限额检查、计算面板的内容地址（对已记录参数取 `sha256` 的前 16 位十六进制——同样的参数永远指向同一块面板，因此重载与重发都能对上），并调用 `exec.concludeTurn()`，让 agent 无法越过这个人类检查点继续执行。`isConcurrencySafe` 刻意省略：按工具注册表的契约，省略即把每次调用归为独占排序屏障，这正是"结束本轮"的呈现所需要的。不存任何状态：面板可由这次调用自己记录下来的参数完整回放，Web 行读的也正是这份参数。
+
+### Source map
+
+| File | Role |
+|---|---|
+| [`src/index.ts`](src/index.ts) | 插件入口：模型 schema、限额策略、surface id 与 `show_task_surface` |
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [Task Surface for structured session interaction](../../../.agents/notes/proposed/feature/2026-08-04-task-surface.zh.md) —— 本工具所属提案的完整设计。
+- [Canonical tool output contract](../../../.agents/notes/implemented/architecture/2026-07-20-canonical-tool-output-contract.zh.md) —— 为什么结果 value 仅存在于本次执行。
+- [Adding a tool](../../../docs/cookbook/adding-a-tool.zh.md) —— 本包遵循的声明式写法。
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+### Task Surface presentation
+
+#### What the model sees
+
+先是它自己发出的调用参数，然后是本轮结束时工具返回的结果文本。
+
+##### Result text
+
+```markdown
+Task Surface "<title>" (<surfaceId>) is open in the panel. The turn ended here: submit the panel to answer it, or send an ordinary message to bypass it and put the panel aside. Do not restate the panel in prose.
+```
+
+#### Token effect
+
+每次请求里有一份声明，与具体任务模型无关；结果文本每块面板一次。面板内容本身从不进入提示词：模型知道自己发了什么，而用户的答复以一条普通消息的形式到达。
+
+#### KV Cache effect
+
+仅追加：工具调用与其结果接在可复用前缀之后，模型也从不重发面板。
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+这些限制定义了什么时候不该用它。它们是当前包的约束，不是任务清单。
+
+- **面板存在于调用参数中** —— 提案里的 `presentationMeta` 归一化与宿主投影尚未实现，因此重发一份改动过的模型是新面板，而不是更新。
+- **一次调用一块面板，无生命周期** —— 没有 active-Surface 检查、关闭事件或提交记录；绕过的方式就是发一条普通用户消息，第二次调用只会再开一块面板。
+- **没有 `order` 字段类型** —— 可拖拽排序列表不在这片切片内，声明式 schema 会直接拒绝。
+- **没有 `diff` 区块** —— 另一个已声明区块类型延后。
+- **没有 render intent** —— 只有在客户端注册了对应键控 Tool view 的地方才会出现面板。
+- **仅包级测试** —— 按[测试策略](../../../docs/testing.zh.md)，Loader 真实组合测试与录制会话快照仍待补。
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+本 Dev Note 是维护者的工作上下文，明确非权威。尚未决定：限额策略是否应该放进 schema（JSON Schema 的 `maxItems`/`maxLength`）而不是函数体；以及 surface id 是否应对归一化后的模型取哈希，而不是对已记录参数。
+
+</details>
