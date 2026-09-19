@@ -132,3 +132,5 @@ These limits define when the panel is not enough. They are current package const
 This Dev Note is working context for maintainers; it is explicitly non-authoritative. Open, undecided: whether the panel should disable itself once its call has settled, whether drafts belong in the existing per-Session slot store, and whether the alt-only image rule should move into `MarkdownText` as a policy prop so every model-authored surface shares it.
 
 </details>
+
+**Runtime invariant:** No companion is published. The Host projection owns the panel state; this Client renders it and owns no durable relationship of its own.

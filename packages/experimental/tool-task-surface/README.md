@@ -157,3 +157,5 @@ These limits define when the tool is the wrong choice. They are current package 
 This Dev Note is working context for maintainers; it is explicitly non-authoritative. Open, undecided: whether the size policy belongs in the schema (JSON Schema `maxItems`/`maxLength`) instead of the body, and whether the surface id should hash the normalized model rather than the logged arguments.
 
 </details>
+
+**Runtime invariant:** No companion is published. The `taskSurface` projection folds committed Session events, and registering that projection is what checks the open-panel relationship.

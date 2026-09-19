@@ -1,0 +1,76 @@
+{
+  "formatVersion": 1,
+  "roots": [
+    {
+      "key": "event:task-surface/dismissed",
+      "kind": "event",
+      "event": "task-surface/dismissed",
+      "surface": false,
+      "digest": "a0e58dcc64d99e0fb31edd47206f30276da846470106991d758a0cbde466c468",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 3,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "surfaceId",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "task-surface/dismissed"
+          }
+        ]
+      }
+    }
+  ],
+  "types": []
+}

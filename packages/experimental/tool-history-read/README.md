@@ -132,3 +132,5 @@ These limits define when the tool is the wrong choice. They are current package 
 This Dev Note is working context for maintainers; it is explicitly non-authoritative. Open, undecided: folding the checkpoint index into the summary text itself, reading spans through an asynchronous paginated read instead of one whole-log load, and listing prune and image-offload replacements alongside summaries.
 
 </details>
+
+**Runtime invariant:** No companion is published. Reads go through `ctx.sessionQuery`, which owns and checks the stored history this tool never indexes itself.

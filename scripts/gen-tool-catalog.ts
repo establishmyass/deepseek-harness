@@ -63,6 +63,9 @@ import BrowserUseRegistry from '@deepseek-ai/dsh-browser-use'
 import * as StagehandBrowserTools from '@deepseek-ai/dsh-experimental-browser-use-stagehand-native'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
+import CommandRuntime from '@deepseek-ai/dsh-commands'
+import * as ToolHistoryRead from '@deepseek-ai/dsh-experimental-tool-history-read'
+import * as ToolTaskSurface from '@deepseek-ai/dsh-experimental-tool-task-surface'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import type PluginManager from '@deepseek-ai/dsh-plugin-manager'
 import * as PluginManagerTools from '@deepseek-ai/dsh-plugin-manager/tools'
@@ -611,6 +614,33 @@ const TOOL_PACKAGES: ToolPackage[] = [
     scope: ctx => catalogChildScopes.get(ctx) as Agent,
     note:
       'All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-experimental-tool-history-read',
+    dir: 'tool-history-read',
+    source: 'packages/experimental/tool-history-read/src/index.ts',
+    requires: ['ctx.tools', 'ctx.sessionQuery', 'a calling Agent whose Session is read'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(SqliteSessionQueryEngine, { path: ':memory:' })
+      await ctx.plugin(ToolHistoryRead)
+    },
+    note:
+      'The tool resolves the calling Agent\'s Session and reads that Session\'s log through `ctx.sessionQuery`; it owns no index of its own, and the mounting composition supplies the query backend.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-experimental-tool-task-surface',
+    dir: 'tool-task-surface',
+    source: 'packages/experimental/tool-task-surface/src/tool.ts',
+    requires: ['ctx.tools', 'ctx.sessionProjections', 'ctx.commands'],
+    writes: ['tool/call', 'tool/result', 'task-surface/dismissed via the dismiss command'],
+    async mount(ctx) {
+      await ctx.plugin(CommandRuntime)
+      await ctx.plugin(ToolTaskSurface)
+    },
+    note:
+      'The panel is presentation: the tool publishes its model in the result, the `taskSurface` projection publishes the open panel to carriers, and `/task-surface dismiss` appends the closing event. Web rendering is the separate opt-in `client-ui-task-surface` package.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-todo',

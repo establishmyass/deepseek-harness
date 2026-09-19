@@ -45,6 +45,8 @@
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`、`list_agents`、`send_message` | `ctx.tools`、`ctx.subagents`、`ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`、`tool/result`、`child session events through ctx.subagents` | - | 这些是控制可继续后台 subagent 的全局命名工具：绑定提供方的 `tool-subagent` 实例注册不同的委派工具；本包注册一次 `send_message` 和 `interrupt_agent`，另由 `list_agents` 通过单独加载的 `/list-agents` 插件提供，其目录行使用 sessionProjections 和实时 Agent 注册表。 |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`、`job_list`、`job_output` | `ctx.tools`、`ctx.jobs`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`user/message via agent.inject() for background completion notices` | - | 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。 |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `interrupt_agent`、`list_agents`、`send_message`、`spawn_teammate`、`team_task_create`、`team_task_get`、`team_task_list`、`team_task_update`、`wait_agent` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agentTeams`、`an exact live Team member Agent` | `tool/call`、`team/member`、`team/message/queued`、`team/message/delivered`、`team/task`、`tool/result` | - | 这 9 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。 |
+| `@deepseek-ai/dsh-experimental-tool-history-read` | `history_read` | `ctx.tools`、`ctx.sessionQuery`、`a calling Agent whose Session is read` | `tool/call`、`tool/result` | - | 该工具解析调用方 Agent 的会话，并通过 `ctx.sessionQuery` 读取该会话的日志；它不持有自己的索引，查询后端由挂载它的组合提供。 |
+| `@deepseek-ai/dsh-experimental-tool-task-surface` | `show_task_surface` | `ctx.tools`、`ctx.sessionProjections`、`ctx.commands` | `tool/call`、`tool/result`、`task-surface/dismissed via the dismiss command` | - | 面板属于呈现：工具在结果里发布其模型，`taskSurface` 投影把打开的面板发布给各载体，`/task-surface dismiss` 追加关闭事件。Web 渲染由另一个按需启用的包 `client-ui-task-surface` 负责。 |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
@@ -2299,6 +2301,495 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 这 10 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。
 
+<a id="deepseek-aidsh-experimental-tool-history-read"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-history-read`
+
+### `history_read`
+
+读取已被上下文压缩从你视野中移除的对话历史。不带参数调用会列出被替换的区段；随后用 from 与 to 把其中一个区段读回为转录。区段有上界：过长的会被截断并附省略说明。若要读取单条原始事件，请改用 session_event_read。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "from": {
+      "type": "integer",
+      "description": "First seq of the span to read, inclusive. Omit together with to for the checkpoint list."
+    },
+    "to": {
+      "type": "integer",
+      "description": "Last seq of the span to read, inclusive."
+    }
+  }
+}
+```
+
+来源：[`packages/experimental/tool-history-read/src/index.ts`](../packages/experimental/tool-history-read/src/index.ts)
+
+该工具解析调用方 Agent 的会话，并通过 `ctx.sessionQuery` 读取该会话的日志；它不持有自己的索引，查询后端由挂载它的组合提供。
+
+<a id="deepseek-aidsh-experimental-tool-task-surface"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-task-surface`
+
+### `show_task_surface`
+
+呈递一块结构化的 Task Surface 面板——内容区段加上可选的输入字段——并结束本轮，交由用户填写。当一张对比表、一组选项或一小组相关字段比散文更能说明决策时使用它。用户的提交会作为其下一条消息到达；不要在对话中重复面板内容。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "object",
+      "description": "The complete Task Surface model to present.",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "number",
+          "description": "Protocol version; must be 1.",
+          "const": 1
+        },
+        "title": {
+          "type": "string",
+          "description": "Panel title, one short line."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional introduction shown above the sections."
+        },
+        "sections": {
+          "type": "array",
+          "description": "Ordered content sections; an empty array is allowed for an fields-only panel.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Stable section id, unique in the model."
+              },
+              "title": {
+                "type": "string",
+                "description": "Optional section heading."
+              },
+              "layout": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "description": "Sections stacked in order.",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "description": "Layout discriminator.",
+                        "const": "stack"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "description": "Sections laid out in two or three columns.",
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "description": "Layout discriminator.",
+                        "const": "grid"
+                      },
+                      "columns": {
+                        "type": "number",
+                        "description": "Grid column count.",
+                        "enum": [
+                          2,
+                          3
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "columns"
+                    ]
+                  }
+                ],
+                "description": "How this section lays out its blocks; defaults to stack."
+              },
+              "blocks": {
+                "type": "array",
+                "description": "Blocks rendered in order.",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "A Markdown passage. Images render as their alt text only.",
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "description": "Block discriminator.",
+                          "const": "markdown"
+                        },
+                        "text": {
+                          "type": "string",
+                          "description": "Markdown source."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "text"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "description": "Labeled values, for totals or comparisons the prose would bury.",
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "description": "Block discriminator.",
+                          "const": "metrics"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "description": "Metric label."
+                              },
+                              "value": {
+                                "type": "string",
+                                "description": "Metric value as display text."
+                              },
+                              "detail": {
+                                "type": "string",
+                                "description": "Optional qualifier under the value."
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "value"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "items"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "description": "A table whose rows address columns by id.",
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "description": "Block discriminator.",
+                          "const": "table"
+                        },
+                        "columns": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "Column id used as the row key."
+                              },
+                              "label": {
+                                "type": "string",
+                                "description": "Column heading."
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "label"
+                            ]
+                          }
+                        },
+                        "rows": {
+                          "type": "array",
+                          "description": "Rows keyed by column id; a missing cell renders as empty.",
+                          "items": {}
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "columns",
+                        "rows"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "description": "A short callout.",
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "description": "Block discriminator.",
+                          "const": "notice"
+                        },
+                        "tone": {
+                          "type": "string",
+                          "description": "Visual weight of the callout.",
+                          "enum": [
+                            "neutral",
+                            "info",
+                            "warning"
+                          ]
+                        },
+                        "text": {
+                          "type": "string",
+                          "description": "Callout text."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "tone",
+                        "text"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "blocks"
+            ]
+          }
+        },
+        "fields": {
+          "type": "array",
+          "description": "Input fields rendered as one form under the sections.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "A free-text input.",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "Field discriminator.",
+                    "const": "text"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Stable field id; echoed in the submission."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Field label."
+                  },
+                  "multiline": {
+                    "type": "boolean",
+                    "description": "Render a growing multi-line editor instead of one line."
+                  },
+                  "required": {
+                    "type": "boolean",
+                    "description": "Mark the field required; the user cannot submit it empty."
+                  },
+                  "initial": {
+                    "type": "string",
+                    "description": "Value the editor starts with."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "label"
+                ]
+              },
+              {
+                "type": "object",
+                "description": "A single-choice input.",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "Field discriminator.",
+                    "const": "choice"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Stable field id; echoed in the submission."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Field label."
+                  },
+                  "options": {
+                    "type": "array",
+                    "description": "Selectable options.",
+                    "items": {
+                      "type": "object",
+                      "description": "One selectable option.",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Stable option id; echoed in the submission."
+                        },
+                        "label": {
+                          "type": "string",
+                          "description": "Short user-facing option label."
+                        },
+                        "detail": {
+                          "type": "string",
+                          "description": "One sentence explaining the option."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "label"
+                      ]
+                    }
+                  },
+                  "initial": {
+                    "type": "string",
+                    "description": "Option id selected first."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "label",
+                  "options"
+                ]
+              },
+              {
+                "type": "object",
+                "description": "A multiple-choice input.",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "Field discriminator.",
+                    "const": "multi-choice"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Stable field id; echoed in the submission."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Field label."
+                  },
+                  "options": {
+                    "type": "array",
+                    "description": "Selectable options.",
+                    "items": {
+                      "type": "object",
+                      "description": "One selectable option.",
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Stable option id; echoed in the submission."
+                        },
+                        "label": {
+                          "type": "string",
+                          "description": "Short user-facing option label."
+                        },
+                        "detail": {
+                          "type": "string",
+                          "description": "One sentence explaining the option."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "label"
+                      ]
+                    }
+                  },
+                  "initial": {
+                    "type": "array",
+                    "description": "Option ids selected first.",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "label",
+                  "options"
+                ]
+              },
+              {
+                "type": "object",
+                "description": "A boolean input.",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "description": "Field discriminator.",
+                    "const": "toggle"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Stable field id; echoed in the submission."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Field label."
+                  },
+                  "initial": {
+                    "type": "boolean",
+                    "description": "State the switch starts in."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "label"
+                ]
+              }
+            ]
+          }
+        },
+        "submit": {
+          "type": "object",
+          "description": "The single submit control.",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "Submit button label, such as \"Approve plan\"."
+            }
+          },
+          "required": [
+            "label"
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "title",
+        "sections",
+        "submit"
+      ]
+    }
+  },
+  "required": [
+    "model"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-task-surface/src/tool.ts`](../packages/experimental/tool-task-surface/src/tool.ts)
+
+面板属于呈现：工具在结果里发布其模型，`taskSurface` 投影把打开的面板发布给各载体，`/task-surface dismiss` 追加关闭事件。Web 渲染由另一个按需启用的包 `client-ui-task-surface` 负责。
 
 <a id="deepseek-aidsh-tool-todo"></a>
 

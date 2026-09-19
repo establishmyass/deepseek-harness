@@ -156,3 +156,5 @@ This session was forked from another conversation to answer one side question. E
 本开发备注是维护者的工作上下文，明确不具权威性。尚未决定的方向：面向模型的侧会话工具、客户端可见的会话切换与回交呈现，以及把分叉能力产品化为 rewind/会话树。
 
 </details>
+
+**运行时不变式：** 不发布伴生入口。本插件只注册一条命令，不持有任何其独立观测可能分叉的状态；它读取的关系均由会话存储与命令注册表拥有。

@@ -156,3 +156,5 @@ These limits define when the command is the wrong tool or needs care. They are c
 This Dev Note is working context for maintainers; it is explicitly non-authoritative. Open, undecided: a model-facing side-session tool, client-visible session switching and handback rendering, and a rewind/session-tree productization of the fork capability.
 
 </details>
+
+**Runtime invariant:** No companion is published. This plugin registers one command and owns no state whose independent observations could diverge; the session store and the command registry own every relationship it reads.
