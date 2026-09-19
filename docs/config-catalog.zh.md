@@ -827,6 +827,22 @@ export interface Config {
 
 来源：[`packages/experimental/ptc-runtime-python/src/index.ts:42`](../packages/experimental/ptc-runtime-python/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-side-sessions"></a>
+
+## `@deepseek-ai/dsh-experimental-side-sessions`
+
+Requires: `agents` · `commands` · `sessions`
+
+```ts config-catalog
+/** Deployment-owned limits for the `/side` command. */
+export interface Config {
+  /** Byte cap for the note merged back into the parent session. */
+  mergeMaxBytes: number
+}
+```
+
+Source: [`packages/experimental/side-sessions/src/index.ts:29`](../packages/experimental/side-sessions/src/index.ts)
+
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
