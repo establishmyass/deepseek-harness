@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { createUserMessage, LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import CommandRuntime from '@deepseek-ai/dsh-commands'
+import type { CommandResult } from '@deepseek-ai/dsh-commands'
+import { createUserMessage, LlmAdapter, MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, MessageSource, StreamChunk } from '@deepseek-ai/dsh-llm'
+import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ToolDefinition, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { mountAgentLoopTestDependencies, mountAgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as taskSurface from '@deepseek-ai/dsh-experimental-tool-task-surface'
+import { TASK_SURFACE_META_KIND } from '../src/meta.ts'
+import { taskSurfaceProjection } from '../src/projection.ts'
 
 /** Script entry: one text answer, or one call to a named tool. */
 type ScriptEntry =
@@ -57,6 +63,7 @@ async function harness(script: ScriptEntry[] = []): Promise<Harness> {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
   const loop = await mountAgentLoopTestHarness(ctx)
+  await ctx.plugin(CommandRuntime)
   const adapter = new ScriptedAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
   const plugin = await ctx.plugin(taskSurface)
@@ -101,6 +108,9 @@ const MODEL = {
   submit: { label: 'Approve' },
 } as const
 
+/** A mutable JSON copy of the model, as metadata payloads carry it. */
+const modelValue = (): JsonValue => JSON.parse(JSON.stringify(MODEL)) as JsonValue
+
 /** Execute `show_task_surface` through the same registry boundary a model call uses. */
 function show(test: Harness, model: unknown): Promise<ToolExecutionResult> {
   return test.ctx.tools.execute({
@@ -132,7 +142,7 @@ describe('@deepseek-ai/dsh-experimental-tool-task-surface registration', () => {
   it('registers one tool with Loader-safe exports and disposes it', async () => {
     const test = await harness()
     expect(taskSurface.name).toBe('tool-task-surface')
-    expect(taskSurface.inject).toEqual(['tools'])
+    expect(taskSurface.inject).toEqual(['tools', 'sessionProjections', 'commands'])
     expect('default' in taskSurface).toBe(false)
     const loader = Object.create(Loader.prototype) as Loader
     expect(loader.unwrapExports(taskSurface)).toBe(taskSurface)
@@ -144,6 +154,9 @@ describe('@deepseek-ai/dsh-experimental-tool-task-surface registration', () => {
 
     await test.plugin.dispose()
     expect(test.ctx.tools.get('show_task_surface')).toBeUndefined()
+    expect(test.ctx.commands.find(test.agent, 'task-surface')).toBeUndefined()
+    expect(test.ctx.sessionProjections.snapshot(test.agent.session, ['taskSurface']).values.taskSurface)
+      .toBeUndefined()
   })
 })
 
@@ -245,5 +258,173 @@ describe('show_task_surface', () => {
     const unknown = await show(test, { ...MODEL, extra: true })
     expect(unknown.isError).toBe(true)
     expect(unknown.error?.info?.code).toBe('INVALID_ARGS')
+  })
+})
+
+
+/** One synthetic `tool/call` event for the fold tests. */
+function callEvent(seq: number, name: string, argsRaw: string, callId = 'call-1'): SessionEvent {
+  return {
+    type: 'tool/call',
+    seq: SessionSeq(seq),
+    time: 0,
+    data: { turn: 1, step: 1, callId: ToolCallId(callId), name, arguments: argsRaw },
+  }
+}
+
+/** One synthetic `tool/result` event carrying a settlement. */
+function resultEvent(
+  seq: number,
+  options: { callId?: string; isError?: boolean; meta?: JsonValue } = {},
+): SessionEvent {
+  const callId = ToolCallId(options.callId ?? 'call-1')
+  return {
+    type: 'tool/result',
+    seq: SessionSeq(seq),
+    time: 0,
+    data: {
+      turn: 1,
+      step: 1,
+      message: {
+        id: MessageId(`m-${String(seq)}`),
+        role: 'user',
+        content: [{
+          type: 'tool-result',
+          toolCallId: callId,
+          content: [],
+          ...options.isError === true ? { isError: true } : {},
+        }],
+        source: { kind: 'tool', callId },
+      },
+      ...options.meta === undefined ? {} : { meta: options.meta },
+    },
+    surfaceOp: 'append',
+  }
+}
+
+/** One synthetic dismissal event. */
+function dismissEvent(seq: number, surfaceId: string): SessionEvent {
+  return { type: 'task-surface/dismissed', seq: SessionSeq(seq), time: 0, data: { surfaceId } }
+}
+
+/** One synthetic user message event from a chosen source. */
+function userMessageEvent(seq: number, source: MessageSource): SessionEvent {
+  return {
+    type: 'user/message',
+    seq: SessionSeq(seq),
+    time: 0,
+    data: {
+      id: MessageId(`m-${String(seq)}`),
+      role: 'user',
+      content: [{ type: 'text', text: 'next' }],
+      source,
+    },
+    surfaceOp: 'append',
+  }
+}
+
+/** The live state of the registered unit for a fresh session. */
+async function idleState(): Promise<ReturnType<typeof taskSurfaceProjection.apply>> {
+  const test = await harness()
+  const state = test.ctx.sessionProjections.stateOf(test.agent.session, 'taskSurface')
+  if (state === undefined) throw new Error('the taskSurface unit is not registered')
+  return state
+}
+
+/** Execute one command line through the registry boundary a UI adapter uses. */
+async function run(test: Harness, line: string): Promise<CommandResult> {
+  const execution = await test.ctx.commands.execute(test.agent, line, [], new AbortController().signal)
+  if (execution === undefined) throw new Error(`command was not registered: ${line}`)
+  return execution.result
+}
+
+/** The published panel value for one session. */
+function published(test: Harness): unknown {
+  return test.ctx.sessionProjections.snapshot(test.agent.session, ['taskSurface']).values.taskSurface
+}
+
+/** Run one user turn through the loop; a tool-calling script ends its own turn. */
+async function send(test: Harness, text: string): Promise<void> {
+  test.agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+  await test.agent.whenIdle()
+}
+
+describe('taskSurface projection unit', () => {
+  it('ignores events that do not concern it, keeping the same state reference', async () => {
+    const state = await idleState()
+    expect(taskSurfaceProjection.apply(state, callEvent(1, 'bash', '{"command":"ls"}'))).toBe(state)
+    expect(taskSurfaceProjection.apply(state, callEvent(2, 'show_task_surface', 'not json'))).toBe(state)
+    expect(taskSurfaceProjection.apply(state, callEvent(3, 'show_task_surface', '42'))).toBe(state)
+    expect(taskSurfaceProjection.apply(state, callEvent(4, 'show_task_surface', '[{"model":{}}]'))).toBe(state)
+    expect(taskSurfaceProjection.apply(state, resultEvent(3))).toBe(state)
+    expect(taskSurfaceProjection.apply(state, userMessageEvent(4, { kind: 'plugin', plugin: 'other' }))).toBe(state)
+    expect(taskSurfaceProjection.apply(state, dismissEvent(5, 'unknown'))).toBe(state)
+  })
+
+  it('opens nothing when the call settles with an error or foreign metadata', async () => {
+    const state = await idleState()
+    const args = JSON.stringify({ model: MODEL })
+    const pending = taskSurfaceProjection.apply(state, callEvent(1, 'show_task_surface', args))
+    const errored = taskSurfaceProjection.apply(pending, resultEvent(2, { isError: true }))
+    expect(errored).toMatchObject({ pending: null, view: { active: null } })
+    const foreign = taskSurfaceProjection.apply(pending, resultEvent(3, { meta: { kind: 'other/tool', version: 1 } }))
+    expect(foreign).toMatchObject({ pending: null, view: { active: null } })
+    const settled = taskSurfaceProjection.apply(pending, resultEvent(4, {
+      meta: { kind: TASK_SURFACE_META_KIND, version: 1, surfaceId: 'abcdef0123456789', model: modelValue() },
+    }))
+    expect(settled).toMatchObject({
+      pending: null,
+      view: { active: { callId: 'call-1', surfaceId: 'abcdef0123456789' } },
+    })
+  })
+
+  it('closes on a matching dismissal or the user own next message', async () => {
+    const state = await idleState()
+    const meta = { kind: TASK_SURFACE_META_KIND, version: 1, surfaceId: 'abcdef0123456789', model: modelValue() }
+    const pending = taskSurfaceProjection.apply(state, callEvent(1, 'show_task_surface', JSON.stringify({ model: MODEL })))
+    const open = taskSurfaceProjection.apply(pending, resultEvent(2, { meta }))
+    expect(taskSurfaceProjection.apply(open, dismissEvent(3, 'another-surface'))).toBe(open)
+    expect(taskSurfaceProjection.apply(open, resultEvent(4, { callId: 'call-2', meta }))).toBe(open)
+    expect(taskSurfaceProjection.apply(open, dismissEvent(5, 'abcdef0123456789'))).toMatchObject({ view: { active: null } })
+    expect(taskSurfaceProjection.apply(open, userMessageEvent(6, { kind: 'user' }))).toMatchObject({ view: { active: null } })
+  })
+})
+
+describe('taskSurface publication and dismissal', () => {
+  it('publishes the open panel with its durable metadata and closes on the next user message', async () => {
+    const test = await harness([{ call: { name: 'show_task_surface', arguments: { model: MODEL } } }, { text: 'noted' }])
+    await send(test, 'plan the release')
+
+    const opened = published(test) as { active: { callId: string; surfaceId: string; model: { title: string } } } | null
+    expect(opened?.active.surfaceId).toMatch(/^[0-9a-f]{16}$/u)
+    expect(opened?.active.model).toMatchObject({ title: MODEL.title })
+
+    const settled = test.agent.session.snapshotEvents().find(event => event.type === 'tool/result')
+    if (settled?.type !== 'tool/result') throw new Error('expected one settled tool result')
+    expect(settled.data.meta).toMatchObject({
+      kind: TASK_SURFACE_META_KIND,
+      version: 1,
+      surfaceId: opened?.active.surfaceId,
+    })
+
+    await send(test, 'ship it')
+    expect(published(test)).toEqual({ active: null })
+  })
+
+  it('dismisses one exact surface through the command, and rejects anything else', async () => {
+    const test = await harness([{ call: { name: 'show_task_surface', arguments: { model: MODEL } } }])
+    await send(test, 'plan the release')
+    const opened = published(test) as { active: { surfaceId: string } } | null
+    const surfaceId = opened?.active.surfaceId ?? ''
+
+    const dismissed = await run(test, `/task-surface dismiss ${surfaceId}`)
+    expect(dismissed).toEqual({ kind: 'success', text: `Task Surface ${surfaceId} dismissed.` })
+    expect(published(test)).toEqual({ active: null })
+    expect(test.agent.session.snapshotEvents().filter(event => event.type === 'task-surface/dismissed'))
+      .toHaveLength(1)
+
+    expect((await run(test, '/task-surface dismiss')).kind).toBe('error')
+    expect((await run(test, '/task-surface nope x')).kind).toBe('error')
+    expect((await run(test, `/task-surface dismiss ${surfaceId} extra`)).kind).toBe('error')
   })
 })

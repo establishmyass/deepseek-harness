@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## Summary
 
-`dsh-experimental-tool-task-surface` 给模型一个稳定工具 `show_task_surface`，用于那些用一块结构化面板表达比来回散文更清楚的交互：一张对比表、一组选项，或一小组相关字段。调用会发布 `TaskSurfaceModelV1`，由客户端渲染；调用成功后本轮对话结束，agent 停在用户这个人类检查点上。用户的提交会作为其下一条普通消息到达。当持久的成果是用户的结论（而不是面板本身）时，选它。
+`dsh-experimental-tool-task-surface` 给模型一个稳定工具 `show_task_surface`，用于那些用一块结构化面板比来回散文更清楚的交互：一张对比表、一组选项，或一小组相关字段。调用发布 `TaskSurfaceModelV1`，由客户端渲染，调用成功后本轮对话结束。`taskSurface` 投影把打开的面板发布给每个载体，`/task-surface dismiss <surfaceId>` 可持久关闭。当持久的成果是用户的结论时选它。
 
 ## Table of Contents
 
@@ -37,6 +37,20 @@ kind: "package-reference"
 | `submit` | `{ label }` |
 
 声明式 schema 之外的参数会在执行前被拒绝，因此不支持的字段类型会直接让调用失败，而不是渲染出一块残缺面板。
+
+### The open panel
+
+一个 `taskSurface` 投影单元把会话日志折叠成每个载体都能读到的面板：调用成功即打开；一条关闭事件或用户自己的下一条消息即关闭。投影值携带调用的身份、面板的内容地址，以及原样记录的模型 —— 因此客户端仅凭投影就能恢复面板，即使打开它的那次调用已经滚出已加载的历史。
+
+| Field | Meaning |
+|---|---|
+| `active.callId` | 打开该面板的那次成功 `show_task_surface` 调用 |
+| `active.surfaceId` | 模型的内容地址（16 位十六进制） |
+| `active.model` | 已验证的模型，载体渲染前会再次校验 |
+
+### Dismiss
+
+`/task-surface dismiss <surfaceId>` 追加一条 `task-surface/dismissed` 事件，且不开启新一轮。它是持久的关闭路径：日志才是权威，因此重载后两侧一致。用户发任意普通消息同样会关闭面板——这就是有文档的绕过方式。
 
 ### Limits
 
@@ -72,13 +86,17 @@ kind: "package-reference"
 
 ### Design concept
 
-这个工具只负责三件事，其余全部委派出去。一份 `defineTool` 声明就是全部契约：schema 负责校验并窄化模型数据，函数体不再重新解析。随后函数体只做限额检查、计算面板的内容地址（对已记录参数取 `sha256` 的前 16 位十六进制——同样的参数永远指向同一块面板，因此重载与重发都能对上），并调用 `exec.concludeTurn()`，让 agent 无法越过这个人类检查点继续执行。`isConcurrencySafe` 刻意省略：按工具注册表的契约，省略即把每次调用归为独占排序屏障，这正是"结束本轮"的呈现所需要的。不存任何状态：面板可由这次调用自己记录下来的参数完整回放，Web 行读的也正是这份参数。
+这个工具只负责契约本身，其余全部委派出去。一份 `defineTool` 声明负责校验并窄化模型数据，函数体不再重新解析。随后函数体做限额检查、计算面板的内容地址（对已记录参数取 `sha256` 的前 16 位十六进制——同样的参数永远指向同一块面板，因此重载与重发都能对上）、通过 `output.presentationMeta` 持久化规范化模型（工具自己的结果事件就是载体唯一能回读它的持久位置），并调用 `exec.concludeTurn()`，让 agent 无法越过这个人类检查点继续执行。`isConcurrencySafe` 刻意省略：按工具注册表的契约，省略即把每次调用归为独占排序屏障，这正是"结束本轮"的呈现所需要的。投影单元是对已提交事件的纯折叠：`tool/call` 记下候选，对应的 `tool/result` 要么打开面板（带标签的元数据），要么丢弃候选（调用被拒），而匹配的关闭事件或一条真实用户消息负责关闭它。无关事件返回同一个 state 引用，这正是发布保持静默的原因。
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：模型 schema、限额策略、surface id 与 `show_task_surface` |
+| [`src/index.ts`](src/index.ts) | 插件入口：注册工具、投影单元与关闭命令 |
+| [`src/tool.ts`](src/tool.ts) | 模型 schema、限额策略、surface id 与 `show_task_surface` |
+| [`src/meta.ts`](src/meta.ts) | 工具写入、投影读取的带标签结果载荷 |
+| [`src/projection.ts`](src/projection.ts) | `taskSurface` 单元、其状态与客户端视图 |
+| [`src/command.ts`](src/command.ts) | `/task-surface dismiss <surfaceId>` |
 
 </details>
 
@@ -122,8 +140,9 @@ Task Surface "<title>" (<surfaceId>) is open in the panel. The turn ended here: 
 
 这些限制定义了什么时候不该用它。它们是当前包的约束，不是任务清单。
 
-- **面板存在于调用参数中** —— 提案里的 `presentationMeta` 归一化与宿主投影尚未实现，因此重发一份改动过的模型是新面板，而不是更新。
-- **一次调用一块面板，无生命周期** —— 没有 active-Surface 检查、关闭事件或提交记录；绕过的方式就是发一条普通用户消息，第二次调用只会再开一块面板。
+- **同时只有一块面板，但不拒绝第二次调用** —— 投影只保留最近一次成功调用，因此第二次调用会替换掉前一块面板，而不是失败；提案里的"已有面板时拒绝"检查尚未实现。
+- **没有提交记录** —— 没有 branded 提交 id、没有事务性认领、也没有队列协调：提交就是一条普通消息，重复提交即两条消息，`edit`/`steer` 也不受限。
+- **关闭不按 id 幂等** —— 每次调用都会追加一条事件；重试只会再追加一条，而只有匹配的 `surfaceId` 会关闭面板。
 - **没有 `order` 字段类型** —— 可拖拽排序列表不在这片切片内，声明式 schema 会直接拒绝。
 - **没有 `diff` 区块** —— 另一个已声明区块类型延后。
 - **没有 render intent** —— 只有在客户端注册了对应键控 Tool view 的地方才会出现面板。

@@ -62,6 +62,7 @@
 | `event:subagent/descriptor` | event | `b79ada42962cad0190a9d465805260567621fa3a4abd757eb31e6016b52d5ab5` | [`event:subagent/descriptor`](#persistence-type-eventsubagentdescriptor) |
 | `event:subagent/model-selection-policy` | event | `a6567ccb2e530606b775371eb4fa31468d72084339968e8b0440a516a23b39dc` | [`event:subagent/model-selection-policy`](#persistence-type-eventsubagentmodel-selection-policy) |
 | `event:system/message` | event | `69becfb6b2d3fd5da91518089454cae8ef33f1835637ec44dde35dd077fd4bae` | [`event:system/message`](#persistence-type-eventsystemmessage) |
+| `event:task-surface/dismissed` | event | `a0e58dcc64d99e0fb31edd47206f30276da846470106991d758a0cbde466c468` | [`event:task-surface/dismissed`](#persistence-type-eventtask-surfacedismissed) |
 | `event:team/member` | event | `4fb59762612c3e3ac3a3bd4f84c9c148d3c3893bd422ba2b201cc039fabd49bc` | [`event:team/member`](#persistence-type-eventteammember) |
 | `event:team/message/delivered` | event | `48f9c19417a1abbedfa59f4667bba36b93ac2db407adf5e84cb3ba0de30942cb` | [`event:team/message/delivered`](#persistence-type-eventteammessagedelivered) |
 | `event:team/message/queued` | event | `443371ec07a03a82a0e93d93abca3e70b03bca55ba5b01d507030fcb66e8fbb4` | [`event:team/message/queued`](#persistence-type-eventteammessagequeued) |
@@ -940,6 +941,22 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 ```
 
 来源：[`packages/core/session/src/types.ts:310`](../packages/core/session/src/types.ts)
+
+### `task-surface/*`
+
+<a id="task-surfacedismissed--log-only"></a>
+
+#### `task-surface/dismissed` — log-only
+
+```ts persistence-catalog
+/**
+ * One dismissed Task Surface. The log is the authority for the closure, so
+ * a reload of either side agrees without a second store.
+ */
+'task-surface/dismissed': { surfaceId: string }
+```
+
+来源：[`packages/experimental/tool-task-surface/src/projection.ts:43`](../packages/experimental/tool-task-surface/src/projection.ts)
 
 ### `team/*`
 
@@ -3386,6 +3403,32 @@ SHA-256: `23cf7e0cf3fec1283b60fa15713506169bc9c079a08e124d1cb9733baca80b40`
 - [`event:agent/inbox/spliced.data.inserted[0].source[7]`](#persistence-type-eventagentinboxspliceddatainserted0source7)
 - [`event:agent/inbox/spliced.data.inserted[0].source[6]`](#persistence-type-eventagentinboxspliceddatainserted0source6)
 - [`event:agent/inbox/spliced.data.inserted[0].source[1]`](#persistence-type-eventagentinboxspliceddatainserted0source1)
+
+<a id="persistence-type-eventtask-surfacedismissed"></a>
+
+### `event:task-surface/dismissed`
+
+SHA-256: `a0e58dcc64d99e0fb31edd47206f30276da846470106991d758a0cbde466c468`
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `data` | 必需 | [`event:task-surface/dismissed.data`](#persistence-type-eventtask-surfacedismisseddata) |
+| `ignorable` | 可选 | `true` |
+| `seq` | 必需 | `number` |
+| `time` | 必需 | `number` |
+| `type` | 必需 | `"task-surface/dismissed"` |
+
+<a id="persistence-type-eventtask-surfacedismisseddata"></a>
+
+### `event:task-surface/dismissed.data`
+
+SHA-256: `0e504fe84a6aa9e800443c0fcc1af76bcf6cdd9a03bbd973db6c69f5c9c0ddff`
+
+来源：[`packages/experimental/tool-task-surface/src/projection.ts:43`](../packages/experimental/tool-task-surface/src/projection.ts)
+
+| 属性 | 存在性 | 类型 |
+|---|---|---|
+| `surfaceId` | 必需 | `string` |
 
 <a id="persistence-type-eventteammember"></a>
 
@@ -6414,6 +6457,14 @@ SHA-256: `1c5a58f4599bd4a9711712551ffe2442a5e5fcd0758bafe630cc4ead850bdaa7`
 SHA-256: `f05fb85e715af4ab4de0b6ba111166dd0435bd8bb74a0fa0f32b9d174113fc7c`
 
 `"task-result"`
+
+<a id="persistence-type-task-surfacedismissed"></a>
+
+### `"task-surface/dismissed"`
+
+SHA-256: `2277fb9f204b9e493723f9734bc8a68e9bbff36db0de52b3f1b563b8937ba38f`
+
+`"task-surface/dismissed"`
 
 <a id="persistence-type-team-message"></a>
 

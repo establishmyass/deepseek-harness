@@ -9655,6 +9655,76 @@
       }
     },
     {
+      "key": "event:task-surface/dismissed",
+      "kind": "event",
+      "event": "task-surface/dismissed",
+      "surface": false,
+      "digest": "a0e58dcc64d99e0fb31edd47206f30276da846470106991d758a0cbde466c468",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 3,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "surfaceId",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "task-surface/dismissed"
+          }
+        ]
+      }
+    },
+    {
       "key": "event:team/member",
       "kind": "event",
       "event": "team/member",
@@ -16354,6 +16424,35 @@
       "sources": []
     },
     {
+      "digest": "0e504fe84a6aa9e800443c0fcc1af76bcf6cdd9a03bbd973db6c69f5c9c0ddff",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "surfaceId",
+                "type": 1,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          }
+        ]
+      },
+      "names": [
+        "event:task-surface/dismissed.data"
+      ],
+      "sources": [
+        "packages/experimental/tool-task-surface/src/projection.ts:43"
+      ]
+    },
+    {
       "digest": "0e7b2a97f54f1afdb8cdfad1635abe9145327db539bfb69b4045c19d8c17755d",
       "schema": {
         "root": 0,
@@ -20019,6 +20118,20 @@
       "sources": [
         "packages/experimental/agent-team/src/types.ts:115"
       ]
+    },
+    {
+      "digest": "2277fb9f204b9e493723f9734bc8a68e9bbff36db0de52b3f1b563b8937ba38f",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "literal",
+            "value": "task-surface/dismissed"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
     },
     {
       "digest": "234142ee4f996f38cc9fa3b8b3e3de29b03c9aefe5ebf6c224eddd564505aa85",
@@ -35077,8 +35190,8 @@
       },
       "names": [
         "SessionEventEnvelope[39].sourceEventSeqs",
-        "SessionEventEnvelope[52].sourceEventSeqs",
-        "SessionEventEnvelope[55].sourceEventSeqs",
+        "SessionEventEnvelope[53].sourceEventSeqs",
+        "SessionEventEnvelope[56].sourceEventSeqs",
         "event:assistant/attempt.data.stream[0][0].dt",
         "event:assistant/attempt.data.stream[0][1].dt",
         "event:assistant/attempt.data.stream[0][2].dt",
@@ -44560,8 +44673,8 @@
       },
       "names": [
         "SessionEventEnvelope[39]",
-        "SessionEventEnvelope[52]",
-        "SessionEventEnvelope[55]"
+        "SessionEventEnvelope[53]",
+        "SessionEventEnvelope[56]"
       ],
       "sources": []
     },
@@ -46441,6 +46554,76 @@
       },
       "names": [
         "event:compaction/summary.data[0]"
+      ],
+      "sources": []
+    },
+    {
+      "digest": "a0e58dcc64d99e0fb31edd47206f30276da846470106991d758a0cbde466c468",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 3,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "surfaceId",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "task-surface/dismissed"
+          }
+        ]
+      },
+      "names": [
+        "event:task-surface/dismissed"
       ],
       "sources": []
     },
@@ -58601,10 +58784,11 @@
         "SessionEventEnvelope[4]",
         "SessionEventEnvelope[50]",
         "SessionEventEnvelope[51]",
-        "SessionEventEnvelope[53]",
+        "SessionEventEnvelope[52]",
         "SessionEventEnvelope[54]",
-        "SessionEventEnvelope[56]",
+        "SessionEventEnvelope[55]",
         "SessionEventEnvelope[57]",
+        "SessionEventEnvelope[58]",
         "SessionEventEnvelope[5]",
         "SessionEventEnvelope[7]",
         "SessionEventEnvelope[8]",

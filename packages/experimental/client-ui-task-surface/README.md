@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-experimental-client-ui-task-surface` renders a `show_task_surface` call as one fillable panel inside the conversation: the declared content blocks (Markdown, metrics, table, notice) plus the declared input fields (text, choice, multi-choice, toggle), and one submit control. Submitting sends the answers as one ordinary user message, so the conclusion stays visible in the transcript and starts the next turn through the same admission path the composer uses. Choose it wherever a session shows Task Surface panels; without it, the same call falls back to the ordinary Tool result text.
+`dsh-experimental-client-ui-task-surface` renders a `show_task_surface` call in two mounts: an input dock above the composer is the editor, and the transcript's keyed Tool row is a read-only replay. Both read the Host's `taskSurface` projection and the logged call arguments, so a refresh or a reconnect recovers the same panel. Submitting sends one ordinary user message; dismissing appends one durable log event.
 
 ## Table of Contents
 
@@ -29,6 +29,8 @@ Mount it in a Web composition that also mounts the tool: this package owns the p
 
 ### What the user gets
 
+- An open panel appears in the input dock above the composer, titled with the panel's own title, with one dismiss control beside it. The dock is the only editor; the transcript row replays the same panel read-only.
+- Dismissing appends one durable log event through `/task-surface dismiss <surfaceId>`, so the panel stays closed after a reload and across clients. Any ordinary message the user sends instead closes it too, which is the documented bypass.
 - Every declared block renders in declared order; a `grid` section lays out its blocks in 2–3 columns and collapses to one column on a narrow panel.
 - Image syntax in Markdown renders as its alt text only: no model-supplied URL is fetched, and no image is shown before the user activates a link themselves.
 - Required text fields hold the submit control closed until they are answered; the toggle always reports its state, and unanswered optional fields are simply omitted from the submission.
@@ -56,15 +58,18 @@ This section explains how the package realizes the behavior above; the observabl
 
 ### Design concept
 
-The panel is a pure function of what the turn already logged. The card reads the model out of the Tool call's own arguments — the same durable slice on both the running and settled node — so a reload, a reconnect, and a scrolled-back transcript render the identical panel without a Host round trip or a second copy of the model. Parsing is strict: an unsupported version, a malformed section, or a block or field arm this slice does not render returns no panel at all, and the card shows the ordinary Tool result text instead of a partially interpreted form. The one write path is the registering plugin's injected `submit`, which resolves the business Session for the view's own scope and admits one text message in `queue` mode; the card itself never touches transport, stores, or other plugins.
+The panel is a pure function of what the log already holds. The dock reads the Host's `taskSurface` projection — identity plus the model exactly as logged — so it stays actionable while the opening call sits outside the loaded history; the row reads the Tool call's own arguments, the durable slice that both the running and settled node carry. Both parse strictly: an unsupported version, a malformed section, or a block or field arm this slice does not render returns no panel at all, and that mount shows the ordinary Tool result text instead of a partially interpreted form. The two write paths are the registering plugin's injected verbs: `submit` resolves the business Session for the view's own scope and admits one text message in `queue` mode, and `dismiss` runs the Host command whose log event closes the projection. Neither component touches transport, stores, or other plugins.
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/client/index.ts`](src/client/index.ts) | Browser plugin: dictionaries, the keyed Tool view registration, and the submission writer |
-| [`src/client/TaskSurfaceCard.tsx`](src/client/TaskSurfaceCard.tsx) | Model parsing, block and field rendering, submission formatting, form lifecycle |
-| [`src/client/TaskSurfaceCard.module.css`](src/client/TaskSurfaceCard.module.css) | Panel layout and theme-token styling |
+| [`src/client/index.ts`](src/client/index.ts) | Browser plugin: dictionaries, both registrations, and the submission and dismissal verbs |
+| [`src/client/TaskSurfaceDock.tsx`](src/client/TaskSurfaceDock.tsx) | The editor: projection read, panel mount, dismissal |
+| [`src/client/TaskSurfaceCard.tsx`](src/client/TaskSurfaceCard.tsx) | The keyed read-only replay of one logged call |
+| [`src/client/TaskSurfacePanel.tsx`](src/client/TaskSurfacePanel.tsx) | Shared panel body: blocks, fields, form lifecycle, actions row |
+| [`src/client/model.ts`](src/client/model.ts) | Model types, strict parsing, initial values, submission formatting |
+| [`src/client/TaskSurfaceCard.module.css`](src/client/TaskSurfaceCard.module.css) | Panel and dock layout with theme-token styling |
 
 </details>
 
@@ -110,9 +115,10 @@ No direct effect: the panel renders locally and contributes no request content. 
 
 These limits define when the panel is not enough. They are current package constraints, not a task backlog.
 
-- **The transcript row is the only editor** — the proposed `TaskSurfaceDock` needs the Host projection, `getActive`, and the transactional submission record; until then a panel whose result has scrolled out of the loaded window cannot be refilled.
+- **A client without the dock cannot fill a panel** — the row is read-only by design (one draft owner), so a composition that mounts only this package's Tool row shows the panel without an editor; the ordinary-message bypass still works.
 - **No persisted drafts** — values live in component state, so a reload loses unsubmitted answers; the submitted answers survive in the user message.
-- **No dismissal and no answer history** — there is no dismissal event, no `submissionId`, and no read-only replay state; the panel stays editable and a second submit is a second message.
+- **No submission record** — there is no `submissionId`, no transactional claim, and no queue coordination: a double submit is two messages, and a dismissal is not idempotent by id.
+- **No collapse** — the proposed dock collapse (local view state) is not built; the panel is dismissed or left open.
 - **Strict parsing, no partial panels** — one unsupported arm or malformed section falls back to the plain Tool result for the whole call.
 - **Fixed component vocabulary** — only the four block kinds, four field kinds, and two layouts the tool declares; unknown ones are rejected before rendering.
 - **Package-level tests only** — a keyless browser composition test through the real Web plugin host is still owed by the [testing policy](../../../docs/testing.md).

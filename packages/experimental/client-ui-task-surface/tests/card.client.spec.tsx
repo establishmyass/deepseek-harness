@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
-/** Task Surface panel: model parsing, submission formatting, and the form lifecycle. */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+/** The keyed Tool row: strict model parsing and the read-only panel replay. */
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import {
-  formatSubmission, parseSurfaceModel, TaskSurfaceCard,
-  type TaskSurfaceCardProps,
-} from '../src/client/TaskSurfaceCard.tsx'
+import { parseSurfaceModel, parseSurfaceModelValue } from '../src/client/model.ts'
+import { TaskSurfaceCard, type TaskSurfaceCardProps } from '../src/client/TaskSurfaceCard.tsx'
 import { zh } from '../src/client/locales.ts'
 
 const t = makeTranslate(zh)
@@ -74,10 +72,7 @@ function settledBlock(model: unknown): unknown {
   }
 }
 
-function cardProps(
-  block: unknown,
-  submit: (text: string) => Promise<void> = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
-): TaskSurfaceCardProps {
+function cardProps(block: unknown): TaskSurfaceCardProps {
   return {
     block,
     callId: 'c1',
@@ -86,16 +81,20 @@ function cardProps(
     loadImage: vi.fn(),
     sessionId: 's1',
     t,
-    submit,
+    submit: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
   } as unknown as TaskSurfaceCardProps
 }
 
 describe('parseSurfaceModel', () => {
   it('accepts the declared arms and rejects everything else', () => {
     expect(parseSurfaceModel(JSON.stringify({ model: MODEL }))?.title).toBe('Ship the panel')
+    // The projection mount hands over the model value itself.
+    expect(parseSurfaceModelValue(MODEL)?.title).toBe('Ship the panel')
+    expect(parseSurfaceModelValue(null)).toBeNull()
+    expect(parseSurfaceModelValue({ ...MODEL, version: 2 })).toBeNull()
     // A streaming prefix is not a panel yet.
     expect(parseSurfaceModel('{"model":{"title":"Ship')).toBeNull()
-    expect(parseSurfaceModel(JSON.stringify({ model: { ...MODEL, version: 2 } }))).toBeNull()
+    expect(parseSurfaceModel('42')).toBeNull()
     expect(parseSurfaceModel(JSON.stringify({ model: { ...MODEL, submit: { label: 1 } } }))).toBeNull()
     expect(parseSurfaceModel(JSON.stringify({ model: { ...MODEL, sections: 'no' } }))).toBeNull()
     expect(parseSurfaceModel(JSON.stringify({ model: { ...MODEL, sections: [{ id: 's', blocks: [{ kind: 'diff' }] }] } }))).toBeNull()
@@ -112,7 +111,6 @@ describe('parseSurfaceModel', () => {
     expect(parseSurfaceModel(JSON.stringify({ model: { ...MODEL, fields: 'no' } }))).toBeNull()
     expect(parseSurfaceModel(JSON.stringify({}))).toBeNull()
     expect(parseSurfaceModel(JSON.stringify([]))).toBeNull()
-    expect(parseSurfaceModel('42')).toBeNull()
   })
 
   it('drops a non-string description instead of rendering it', () => {
@@ -120,38 +118,8 @@ describe('parseSurfaceModel', () => {
   })
 })
 
-describe('formatSubmission', () => {
-  it('renders one labeled line per answered field in declaration order', () => {
-    const model = parseSurfaceModel(JSON.stringify({ model: MODEL }))
-    if (model === null) throw new Error('expected a parsed model')
-    const text = formatSubmission(model, {
-      note: '  ship it  ',
-      strategy: 'all',
-      checks: ['smoke', 'load', 'vanished'],
-      notify: false,
-    }, t)
-    expect(text).toBe([
-      'Task Surface「Ship the panel」的答复',
-      '- Note: ship it',
-      '- Strategy: All at once',
-      '- Checks: Smoke, Load, vanished',
-      '- Notify: 否',
-    ].join('\n'))
-  })
-
-  it('omits unanswered fields, keeps the toggle state, and falls back to the raw id for an unknown choice', () => {
-    const model = parseSurfaceModel(JSON.stringify({ model: MODEL }))
-    if (model === null) throw new Error('expected a parsed model')
-    expect(formatSubmission(model, { strategy: 'mystery' }, t)).toBe([
-      'Task Surface「Ship the panel」的答复',
-      '- Strategy: mystery',
-      '- Notify: 否',
-    ].join('\n'))
-  })
-})
-
 describe('TaskSurfaceCard', () => {
-  it('renders every declared block, with image syntax reduced to alt text', () => {
+  it('renders every declared block read-only, with image syntax reduced to alt text', () => {
     const { container } = render(<TaskSurfaceCard {...cardProps(settledBlock(MODEL))} />)
     expect(screen.getByText('Ship the panel')).toBeTruthy()
     expect(screen.getByText('Compare two release options.')).toBeTruthy()
@@ -169,134 +137,23 @@ describe('TaskSurfaceCard', () => {
     expect(screen.getByText('one shard first')).toBeTruthy()
     expect(screen.getByText('Rollback needs the feature flag.')).toBeTruthy()
     expect(container.querySelector('[data-columns="3"]')).toBeTruthy()
+    // The dock owns editing: this row keeps the fields visible but not actionable.
+    expect(screen.getByLabelText(/Note/u)).toHaveProperty('disabled', true)
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('renders a running call from its streaming arguments', () => {
+    render(<TaskSurfaceCard {...cardProps(runningBlock(MODEL))} />)
+    expect(screen.getByText('Ship the panel')).toBeTruthy()
   })
 
   it('falls back to a status line for a call it cannot own', () => {
+    render(<TaskSurfaceCard {...cardProps(runningBlock('{"model":{"title":'))} />)
     render(<TaskSurfaceCard {...cardProps(settledBlock('{"model":{"title":'))} />)
-    expect(screen.getByText('这个面板还没生成完。')).toBeTruthy()
+    expect(screen.getAllByText('这个面板还没生成完。')).toHaveLength(2)
     expect(screen.queryByRole('button')).toBeNull()
     // A settled node whose durable call slice kept no arguments at all.
     render(<TaskSurfaceCard {...cardProps({ ...settledBlock(MODEL) as object, call: undefined })} />)
-    expect(screen.getAllByText('这个面板还没生成完。')).toHaveLength(2)
-  })
-
-  it('holds submit closed while a required field is empty, then sends the formatted message', async () => {
-    const sent: string[] = []
-    const submit = vi.fn<(text: string) => Promise<void>>((text) => {
-      sent.push(text)
-      return Promise.resolve()
-    })
-    render(<TaskSurfaceCard {...cardProps(runningBlock(MODEL), submit)} />)
-    const button = screen.getByRole('button', { name: 'Approve' })
-    fireEvent.change(screen.getByLabelText(/Note/u), { target: { value: '   ' } })
-    expect(button).toHaveProperty('disabled', true)
-    fireEvent.change(screen.getByLabelText(/Note/u), { target: { value: 'ship it' } })
-    expect(button).toHaveProperty('disabled', false)
-    fireEvent.click(button)
-    expect(sent).toEqual([[
-      'Task Surface「Ship the panel」的答复',
-      '- Note: ship it',
-      '- Strategy: Canary',
-      '- Notify: 是',
-    ].join('\n')])
-    expect(await screen.findByText('已发送；模型会收到这份答复。')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', true)
-  })
-
-  it('collects choices, multi-choices, and toggles from the panel controls', () => {
-    const sent: string[] = []
-    const submit = vi.fn<(text: string) => Promise<void>>((text) => {
-      sent.push(text)
-      return Promise.resolve()
-    })
-    render(<TaskSurfaceCard {...cardProps(runningBlock(MODEL), submit)} />)
-    fireEvent.click(screen.getByLabelText('All at once'))
-    fireEvent.click(screen.getByLabelText('Smoke'))
-    fireEvent.click(screen.getByLabelText('Load'))
-    // A second click on a checked box takes the option back out.
-    fireEvent.click(screen.getByLabelText('Load'))
-    fireEvent.click(screen.getByLabelText('Smoke'))
-    fireEvent.click(screen.getByLabelText('Smoke'))
-    fireEvent.click(screen.getByLabelText('Notify'))
-    fireEvent.change(screen.getByLabelText('Branch'), { target: { value: 'release/1.2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
-    expect(sent).toEqual([[
-      'Task Surface「Ship the panel」的答复',
-      '- Note: none',
-      '- Branch: release/1.2',
-      '- Strategy: All at once',
-      '- Checks: Smoke',
-      '- Notify: 否',
-    ].join('\n')])
-  })
-
-  it('keeps the values editable and shows the reason when admission fails', async () => {
-    const submit = vi.fn<(text: string) => Promise<void>>(() => Promise.reject(new Error('the host is offline')))
-    render(<TaskSurfaceCard {...cardProps(runningBlock(MODEL), submit)} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '发送失败：the host is offline')
-    expect(screen.getByRole('button', { name: 'Approve' })).toHaveProperty('disabled', false)
-    expect(screen.getByLabelText(/Note/u)).toHaveProperty('value', 'none')
-  })
-
-  it('reports a rejection that is not an Error as its own text', async () => {
-    // A non-Error rejection is exactly the fallback branch under test.
-    // oxlint-disable-next-line typescript/prefer-promise-reject-errors
-    const submit = vi.fn<(text: string) => Promise<void>>(() => Promise.reject('boom'))
-    render(<TaskSurfaceCard {...cardProps(runningBlock(MODEL), submit)} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
-    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '发送失败：boom')
-  })
-
-  it('ignores a submit that arrives while a required field is still empty', () => {
-    const submit = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve())
-    render(<TaskSurfaceCard {...cardProps(runningBlock(MODEL), submit)} />)
-    const button = screen.getByRole('button', { name: 'Approve' })
-    const form = button.closest('form')
-    if (form === null) throw new Error('expected the panel form')
-    fireEvent.change(screen.getByLabelText(/Note/u), { target: { value: '' } })
-    fireEvent.submit(form)
-    expect(submit).not.toHaveBeenCalled()
-  })
-
-  it('renders a panel with no fields at all as content only', () => {
-    const bare = { version: 1, title: 'T', description: 'D', sections: [], submit: { label: 'OK' } }
-    const model = parseSurfaceModel(JSON.stringify({ model: bare }))
-    expect(model?.fields).toBeUndefined()
-    if (model === null) throw new Error('expected a parsed model')
-    expect(formatSubmission(model, {}, t)).toBe('Task Surface「T」的答复')
-    const { container } = render(<TaskSurfaceCard {...cardProps(runningBlock(bare))} />)
-    expect(container.querySelector('form')).toBeNull()
-    expect(screen.queryByRole('button')).toBeNull()
-    // An explicit empty field list renders content only as well.
-    render(<TaskSurfaceCard {...cardProps(runningBlock({ ...bare, fields: [] }))} />)
-    expect(screen.queryByRole('button')).toBeNull()
-  })
-
-  it('renders a stack section and ignores field initials that contradict their arm', () => {
-    const malformed = {
-      version: 1,
-      title: 'T',
-      sections: [{ id: 's', title: 'S', blocks: [{ kind: 'markdown', text: 'plain' }] }],
-      fields: [
-        { kind: 'text', id: 't', label: 'T', initial: 7 },
-        { kind: 'choice', id: 'c', label: 'C', options: [{ id: 'a', label: 'A' }], initial: 7 },
-        { kind: 'multi-choice', id: 'm', label: 'M', options: [{ id: 'a', label: 'A' }], initial: 'a' },
-        { kind: 'multi-choice', id: 'm2', label: 'M2', options: [{ id: 'a', label: 'A' }], initial: ['a'] },
-        { kind: 'toggle', id: 'g', label: 'G' },
-      ],
-      submit: { label: 'OK' },
-    }
-    const sent: string[] = []
-    const submit = vi.fn<(text: string) => Promise<void>>((text) => {
-      sent.push(text)
-      return Promise.resolve()
-    })
-    const { container } = render(<TaskSurfaceCard {...cardProps(runningBlock(malformed), submit)} />)
-    expect(screen.getByText('S')).toBeTruthy()
-    expect(container.querySelector('[data-columns]')).toBeNull()
-    expect(screen.getByLabelText('T')).toHaveProperty('value', '')
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
-    expect(sent).toEqual(['Task Surface「T」的答复\n- M2: A\n- G: 否'])
+    expect(screen.getAllByText('这个面板还没生成完。')).toHaveLength(3)
   })
 })

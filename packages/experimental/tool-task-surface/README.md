@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-experimental-tool-task-surface` gives the model one stable tool, `show_task_surface`, for interactions that read better as one structured panel than as alternating prose: a comparison table, a set of options, or a small group of related fields. The call publishes `TaskSurfaceModelV1`, the client renders it, and a successful call ends the turn so the agent stops at the requested human checkpoint. The user's submission arrives as their next ordinary message. Choose it when the durable result is the user's conclusion, not the panel itself.
+`dsh-experimental-tool-task-surface` gives the model one stable tool, `show_task_surface`, for interactions that read better as one structured panel than as alternating prose: a comparison table, a set of options, or a small group of related fields. The call publishes `TaskSurfaceModelV1`, the client renders it, and a successful call ends the turn. A `taskSurface` projection publishes the open panel to every carrier, and `/task-surface dismiss <surfaceId>` closes it durably. Choose it when the durable result is the user's conclusion.
 
 ## Table of Contents
 
@@ -37,6 +37,20 @@ Mount this plugin beside the tool registry; the tool needs no service beyond `ct
 | `submit` | `{ label }` |
 
 Arguments the declared schema does not contain are rejected before execution, so an unsupported field kind fails the call instead of rendering a partial panel.
+
+### The open panel
+
+One `taskSurface` projection unit folds the Session log into the panel every carrier reads: a successful call opens it, and one dismissal event or the user's own next message closes it. The value carries the call's identity, the panel's content address, and the model exactly as logged, so a client recovers the panel from the projection alone — even when the opening call has scrolled out of the loaded history.
+
+| Field | Meaning |
+|---|---|
+| `active.callId` | The successful `show_task_surface` call that opened the panel |
+| `active.surfaceId` | Content address of the model (16 hexadecimal characters) |
+| `active.model` | The validated model, re-checked by the carrier before it renders |
+
+### Dismiss
+
+`/task-surface dismiss <surfaceId>` appends one `task-surface/dismissed` event and starts no turn. It is the durable close path: the log is the authority, so both sides agree after a reload. Sending any ordinary message closes the panel just as well — that is the documented bypass.
 
 ### Limits
 
@@ -72,13 +86,17 @@ This section explains how the package realizes the behavior above; the observabl
 
 ### Design concept
 
-The tool owns exactly three things and delegates the rest. One `defineTool` declaration is the whole contract: the schema validates and narrows the model, so the body never re-parses it. The body then bounds the model, mints the panel's content address (`sha256` of the logged arguments, first 16 hexadecimal characters — the same arguments always name the same panel, so a reload and a re-post agree), and calls `exec.concludeTurn()` so the agent cannot continue past the human checkpoint. `isConcurrencySafe` stays omitted: under the tool-registry contract that classifies every call as an exclusive ordering barrier, which is what a turn-ending presentation needs. Nothing is stored: the panel is replayable from the call's own logged arguments, which is also what the Web row reads.
+The tool owns the contract and delegates the rest. One `defineTool` declaration validates and narrows the model, so the body never re-parses it. The body then bounds the model, mints the panel's content address (`sha256` of the logged arguments, first 16 hexadecimal characters — the same arguments always name the same panel, so a reload and a re-post agree), persists the canonical model through `output.presentationMeta` (the tool's result event is the one durable place a carrier reads it back from), and calls `exec.concludeTurn()` so the agent cannot continue past the human checkpoint. `isConcurrencySafe` stays omitted: under the tool-registry contract that classifies every call as an exclusive ordering barrier, which is what a turn-ending presentation needs. The projection unit is a pure fold over committed events: a `tool/call` remembers the candidate, its `tool/result` either opens the panel (tagged metadata) or discards the candidate (a rejected call), and a matching dismissal or a real user message closes it. Unrelated events return the same state reference, which is what keeps publication silent.
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: the model schema, the size policy, the surface id, and `show_task_surface` |
+| [`src/index.ts`](src/index.ts) | Plugin entry: registers the tool, the projection unit, and the dismiss command |
+| [`src/tool.ts`](src/tool.ts) | The model schema, the size policy, the surface id, and `show_task_surface` |
+| [`src/meta.ts`](src/meta.ts) | The tagged result payload the tool writes and the projection reads |
+| [`src/projection.ts`](src/projection.ts) | The `taskSurface` unit, its state, and its client view |
+| [`src/command.ts`](src/command.ts) | `/task-surface dismiss <surfaceId>` |
 
 </details>
 
@@ -122,8 +140,9 @@ Append-only: the tool call and its result extend the reusable prefix, and the mo
 
 These limits define when the tool is the wrong choice. They are current package constraints, not a task backlog.
 
-- **The panel lives in the call arguments** — the proposed `presentationMeta` normalization and the Host projection are deferred, so a re-post of a changed model is a new panel rather than an update.
-- **One panel per call, no lifecycle** — no active-Surface check, dismissal event, or submission record; an ordinary user message is the whole bypass, and a second call simply opens a second panel.
+- **One panel at a time, but no refusal** — the projection keeps only the most recent successful call, so a second call replaces the first panel instead of failing; the proposed "reject while a Surface is open" check is deferred.
+- **No submission record** — no branded submission id, no transactional claim, and no queue coordination: the submission is one ordinary message, so a double submit is two messages and `edit`/`steer` are not restricted.
+- **Dismissal is not idempotent by id** — the command appends one event per invocation; retrying simply appends another, and only the matching `surfaceId` closes the panel.
 - **No `order` field kind** — reorderable lists are outside this slice, and the declared schema rejects them.
 - **No `diff` block** — the other declared block kind is deferred.
 - **No render intent** — the panel appears only where a client registers the keyed Tool view.
